@@ -1,4 +1,5 @@
 .ipynb_checkpoints
 *.ipynb
 testimgs
+testoutput
 __pycache__

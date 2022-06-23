@@ -126,7 +126,7 @@ if __name__=="__main__":
     camera.set_pos([-4,-4,4])
     camera.set_lookat([0,0,0])
 
-    pts = np.array([ptl, ptr, pbl, pbr, ptl, ptr, pbl, pbr])
+    pts = np.array([ptl, ptr, pbl, pbr])
     
     xys, mask = camera.getPixCoords(pts)
     print(xys)

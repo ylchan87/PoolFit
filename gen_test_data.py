@@ -2,7 +2,7 @@ from copyreg import pickle
 import cv2
 import numpy as np
 
-from camera import Camera
+from camera_pytorch import Camera
 
 
 def genDottedLine(pt1, pt2, n=10):    
@@ -33,6 +33,9 @@ def randPtInBox(boxCenter, boxSize):
 
 if __name__=="__main__":
     import pickle
+
+    imgH = 1000
+    imgW = 1000
     #unit m
     rectw = 2.8
     recth = 1.4
@@ -45,7 +48,7 @@ if __name__=="__main__":
     pts = np.array([ptl, ptr, pbr, pbl])
     xyzs = genDottedPolygon(pts)
 
-    camera = Camera(800., 1000, 1000)
+    camera = Camera(800., imgH, imgW)
     
     for idx in range(3):
 
@@ -53,11 +56,23 @@ if __name__=="__main__":
         camera.set_pos( randPtInBox([0,0,2.2], [5,5,4]) )
         camera.set_lookat(randPtInBox([0,0,0], [1,1,1]))
         xys_set, mask = camera.getPixCoords(xyzs)
+        xys_set = xys_set.detach().cpu().numpy()
 
         xys_seti = np.round(xys_set).astype(int)
+        mask = np.stack([
+            0 <= xys_seti[:,0]         ,
+                 xys_seti[:,0] < imgW  ,
+            0 <= xys_seti[:,1]         ,
+                 xys_seti[:,1] < imgH
+        ])
+        mask = np.all(mask, axis=0)
+
+        xys_set  = xys_set[mask]
+        xys_seti = xys_seti[mask]
+
         canvas = drawDots(xys_seti)
 
-        cv2.imwrite(f"./testimgs/test_{idx:02d}.jpg", canvas)
+        cv2.imwrite(f"./testimgs/test_{idx:02d}.jpg", canvas) 
 
         with open(f"./testimgs/test_{idx:02d}.pkl", "wb") as outFile:
             pickle.dump(
@@ -65,6 +80,9 @@ if __name__=="__main__":
                     "f" : camera.f,
                     "intrinscM" : camera.intrinsicM,
                     "extrinscM" : camera.extrinsicM,
+                    "pos"       : camera.pos,
+                    "pts"       : xys_set
+
                 },
                 outFile)
 

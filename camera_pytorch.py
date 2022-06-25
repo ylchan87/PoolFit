@@ -40,7 +40,7 @@ class Camera(nn.Module):
 
     @property
     def f(self):
-        return self.f_corrfac.detach().item()* self.initf
+        return 1./self.f_corrfac.detach().item()* self.initf
         
     @f.setter
     def f(self, val):
@@ -61,7 +61,7 @@ class Camera(nn.Module):
 
     def set_pos(self, xyz):
         with torch.no_grad():
-            if type(xyz)==list: xyz = torch.tensor(xyz, dtype=torch.float32)
+            if type(xyz) in [list, np.ndarray]: xyz = torch.tensor(xyz, dtype=torch.float32)
             self.pos[:] = xyz
             self.set_lookat(self.lookat)
             self._update_extrinsicM()        
@@ -70,7 +70,7 @@ class Camera(nn.Module):
         if roll!=0.:
             raise NotImplementedError("roll != 0 not yet work")
         
-        if type(lookat)==list: lookat = torch.tensor(lookat, dtype=torch.float32)
+        if type(lookat) in [list, np.ndarray]: lookat = torch.tensor(lookat, dtype=torch.float32)
         self.lookat = lookat
         self.roll = roll
         
@@ -94,7 +94,10 @@ class Camera(nn.Module):
 
         with torch.no_grad():
             self.axis_angle[:] = matrix_to_axis_angle(rotM)
-            self._update_extrinsicM()        
+            self._update_extrinsicM()   
+
+    def set_f_fixed(self, flag):
+        self.f_corrfac.requires_grad = not flag
 
     def _update_fov(self):
         self.fov_deg_w = np.rad2deg( np.arctan(self.imgW/2/self.f)*2 )
@@ -114,8 +117,8 @@ class Camera(nn.Module):
                             ], dtype=torch.float32)
                             
         # assign self.f to elements -> has grad
-        self.intrinsicM[0,0] = -self.f_corrfac * self.initf
-        self.intrinsicM[1,1] = -self.f_corrfac * self.initf
+        self.intrinsicM[0,0] = -1./self.f_corrfac * self.initf
+        self.intrinsicM[1,1] = -1./self.f_corrfac * self.initf
 
         self.perspectiveM = self.intrinsicM @ self.extrinsicM
         
@@ -142,6 +145,8 @@ class Camera(nn.Module):
             perspectiveM = self.perspectiveM
         else:
             perspectiveM = self.perspectiveM.detach()
+
+        if type(worldCoords) in [np.ndarray]: worldCoords = torch.tensor(worldCoords, dtype=torch.float32)
 
         xyzws = torch.cat( [worldCoords, torch.ones([len(worldCoords), 1])], axis=1 )
         xyws = perspectiveM @ xyzws.T
@@ -221,7 +226,7 @@ if __name__=="__main__":
             cv2.imwrite(f"./testoutput/iter{iter:04d}.png", canvas)
 
     print(f"rectw: {rectw}")        
-    print(f"cam f: {camera.initf * camera.f_corrfac}")
+    print(f"cam f: {camera.initf / camera.f_corrfac}")
     print(f"cam pos: {camera.pos}")
 
 

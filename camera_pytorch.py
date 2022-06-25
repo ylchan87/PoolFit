@@ -21,8 +21,9 @@ class Camera(nn.Module):
         self.f_corrfac  = nn.Parameter( torch.tensor(     [1.0], dtype=torch.float32) )
 
         # extrinsics related
-        self.pos        = nn.Parameter( torch.tensor([1.,1.,1.], dtype=torch.float32) )
-        self.axis_angle = nn.Parameter( torch.tensor([0.,0.,0.], dtype=torch.float32) )
+        self._pos             = torch.tensor([1.,1.,1.], dtype=torch.float32) # pos in world frame
+        self.pos_in_cam_frame = nn.Parameter( torch.tensor([1.,1.,1.], dtype=torch.float32) )
+        self.axis_angle       = nn.Parameter( torch.tensor([0.,0.,0.], dtype=torch.float32) )
 
         self.lookat = torch.tensor([0.,0.,0.], dtype=torch.float32)
         self.roll   = 0.
@@ -49,6 +50,18 @@ class Camera(nn.Module):
             self.f_corrfac[:] = 1.0
             self._update_fov()
             self._update_intrinsicM()
+    
+    @property
+    def pos(self):
+        return -self.extrinsicM[:3,:3].T @ self.pos_in_cam_frame
+        
+    @pos.setter
+    def pos(self, xyz):
+        with torch.no_grad():
+            if type(xyz) in [list, np.ndarray]: xyz = torch.tensor(xyz, dtype=torch.float32)
+            self._pos[:] = xyz
+            self.set_lookat(self.lookat)
+            self._update_extrinsicM()        
 
     def set_f(self, val):        
         self.f = val
@@ -60,11 +73,7 @@ class Camera(nn.Module):
             self._update_intrinsicM()
 
     def set_pos(self, xyz):
-        with torch.no_grad():
-            if type(xyz) in [list, np.ndarray]: xyz = torch.tensor(xyz, dtype=torch.float32)
-            self.pos[:] = xyz
-            self.set_lookat(self.lookat)
-            self._update_extrinsicM()        
+        self.pos = xyz
 
     def set_lookat(self, lookat, roll=0.):
         if roll!=0.:
@@ -74,7 +83,7 @@ class Camera(nn.Module):
         self.lookat = lookat
         self.roll = roll
         
-        camZ = normalize(-self.pos + self.lookat)
+        camZ = normalize(-self._pos + self.lookat)
 
         if camZ[0]==camZ[1]==0:
             camX = torch.tensor([1., 0., 0.], dtype=torch.float32)
@@ -93,6 +102,7 @@ class Camera(nn.Module):
         rotM = torch.stack([camX, camY, camZ], axis=0)
 
         with torch.no_grad():
+            self.pos_in_cam_frame[:] = -rotM @ self._pos 
             self.axis_angle[:] = matrix_to_axis_angle(rotM)
             self._update_extrinsicM()   
 
@@ -130,7 +140,7 @@ class Camera(nn.Module):
         rotM = axis_angle_to_matrix( self.axis_angle)
         
         extrinsicM[0:3, 0:3] = rotM
-        extrinsicM[0:3,   3] = -rotM @ self.pos
+        extrinsicM[0:3,   3] = self.pos_in_cam_frame
 
         self.extrinsicM = extrinsicM
         self.perspectiveM = self.intrinsicM @ self.extrinsicM

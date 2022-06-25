@@ -129,14 +129,14 @@ if __name__=="__main__":
 
     # unit m
     # rectangle to fit
-    recth = 1.0
-    rectw = torch.tensor( 1.0, dtype=torch.float32, requires_grad=True)
-    #rectRatioSqrt = torch.tensor( 1.0, dtype=torch.float32, requires_grad=True)
+    #recth = 1.0
+    #rectw = torch.tensor( 1.0, dtype=torch.float32, requires_grad=True)
+    rectRatioSqrt = torch.tensor( 1.0, dtype=torch.float32, requires_grad=True)
 
     balld = 0.0615
 
-    corners_xyz = gen_rect(recth, rectw)
-    #corners_xyz = gen_rect2(rectRatioSqrt)
+    #corners_xyz = gen_rect(recth, rectw)
+    corners_xyz = gen_rect2(rectRatioSqrt)
 
     camera = Camera(800., 1000, 1000)
     camera.set_f(1000.)
@@ -152,8 +152,8 @@ if __name__=="__main__":
 
     ref_xys = torch.from_numpy(ref_answer["pts"]).to(torch.float32)
 
-    #optimizer = optim.Adam( list(camera.parameters()) + [rectRatioSqrt], lr=0.1)
-    optimizer = optim.Adam( list(camera.parameters()) + [rectw], lr=0.01)
+    optimizer = optim.Adam( list(camera.parameters()) + [rectRatioSqrt], lr=0.1)
+    #optimizer = optim.Adam( list(camera.parameters()) + [rectw], lr=0.01)
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=50, factor=0.5)
 
     lossFunc = nn.L1Loss()
@@ -163,8 +163,8 @@ if __name__=="__main__":
     for iter in range(options.max_iter):
 
         
-        corners_xyz = gen_rect(recth, rectw)
-        #corners_xyz = gen_rect2(rectRatioSqrt)
+        #corners_xyz = gen_rect(recth, rectw)
+        corners_xyz = gen_rect2(rectRatioSqrt)
         corners_xy, mask = camera.getPixCoords(corners_xyz, tune_cam_params=True)
 
         minDistnace, nearestEdgeIdx = get_min_dist(corners_xy, ref_xys)
@@ -178,7 +178,7 @@ if __name__=="__main__":
         loss.backward()
         optimizer.step()
         optimizer.zero_grad()
-        #scheduler.step(loss)
+        scheduler.step(loss)
 
         if loss<100 and f_fixed:
             print("release f")
@@ -199,6 +199,7 @@ if __name__=="__main__":
 
     print("====Fit====")
     print(f"rectRatio: {rectRatioSqrt*rectRatioSqrt}")        
+    #print(f"rectRatio: {rectRatioSqrt*rectRatioSqrt}")        
     print(f"cam f: {camera.initf * camera.f_corrfac}")
     print(f"cam pos: {camera.pos}")
 

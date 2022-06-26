@@ -145,7 +145,7 @@ class Camera(nn.Module):
         self.extrinsicM = extrinsicM
         self.perspectiveM = self.intrinsicM @ self.extrinsicM
 
-    def getPixCoords(self, worldCoords, tune_cam_params=False):
+    def getPixCoords(self, worldCoords, tune_cam_params=False, getScales=False):
         """
         worldCoords : numpy array (n,3)
         """
@@ -164,7 +164,15 @@ class Camera(nn.Module):
         ws = xyws[:,2]
         mask = ws>0            # if false, point is behind the cam
         xys = xyws[:,0:2] / ws[:,None] # normalize w to 1
-        return xys, mask
+
+        if getScales:
+            cam_frame_xyzs = self.extrinsicM @ xyzws.T
+            scale = 1./self.f_corrfac* self.initf / cam_frame_xyzs[2]
+            return xys, mask, scale
+        else:
+            return xys, mask
+        
+    
 
 def drawPolygon(pts, canvas = None, color = (255,0,0), imgsize=(1000,1000)):
     if canvas is None:

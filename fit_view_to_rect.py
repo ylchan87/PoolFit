@@ -5,6 +5,7 @@ import torch
 from torch import nn
 from torch import optim
 from camera_pytorch import Camera
+from common import SideID
 from utils import *
 
 def gen_rect(recth, rectw):
@@ -33,7 +34,7 @@ def gen_rect2(rectRatioSqrt):
 
         return pts
 
-def get_distance_from_line(lineStart, lineEnd, pts):
+def get_distance_from_line_old(lineStart, lineEnd, pts):
     """
     +ive  = on left of the line
     """
@@ -61,6 +62,30 @@ def get_distance_from_line(lineStart, lineEnd, pts):
     vs[mask] += (us-lineLength)[mask]*1.5
     return vs
 
+def get_distance_from_line(lineStart, lineEnd, pts):
+    """
+    +ive  = on left of the line
+    """
+    line = -lineStart+lineEnd
+    lineLength = torch.norm(line)
+
+    lineUvec = line / lineLength #unit vec parallel to line
+    lineVvec = torch.tensor([ [0.,1.], [-1.,0.]]) @ lineUvec #unit vec perpendicular to line
+
+    tmp = pts - lineStart
+    us = lineUvec @ tmp.T
+    vs = lineVvec @ tmp.T
+
+    vs = torch.abs(vs)
+
+    mask = (us<0)
+    vs[mask] += torch.abs(us[mask])*1.0
+
+    mask = (us>lineLength)
+    vs[mask] += (us-lineLength)[mask]*1.0
+
+    return vs
+
 def get_min_dist(corners, ref_xys):
     """
     corners: 4 corners of the to be optimized rect in img
@@ -75,13 +100,35 @@ def get_min_dist(corners, ref_xys):
 
     return minDistnace, nearestEdgeIdx
 
+def lossFunc(ref_xys, ref_sideIds, corners_xy):
+    """
+    assumes corners_xys are in topLeft topRight botRight botLeft order
+    """
+
+    sideIDs = [
+        SideID.TOP,
+        SideID.RIGHT,
+        SideID.BOT,
+        SideID.LEFT,
+    ]
+
+    loss = []
+    
+    for i in range(4):
+        mask = ref_sideIds==sideIDs[i]
+        if not torch.any(mask): continue
+        loss.append( get_distance_from_line(corners_xy[i], corners_xy[(i+1)%4],  ref_xys[mask]) )
+    
+    loss = torch.cat(loss)
+    loss = torch.mean(loss * loss) # L2 loss
+    return loss
+
 if __name__=="__main__":
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument("--test_idx", default=0, type=int)
     parser.add_argument("--max_iter", default=10000, type=int)
     options = parser.parse_args()
-
 
     # color for 4 side of the rect
     PALETTE = [
@@ -105,7 +152,7 @@ if __name__=="__main__":
     corners_xyz = gen_rect2(rectRatioSqrt)
 
     camera = Camera(800., 1000, 1000)
-    camera.set_f(1000.)
+    camera.set_f(984.)
     camera.set_pos([-5,1,5])
     camera.set_lookat([0,0,0])    
 
@@ -116,14 +163,13 @@ if __name__=="__main__":
 
     ref_answer, ref_img = read_test_case(options.test_idx)
 
-    ref_xys = torch.from_numpy(ref_answer["pts"]).to(torch.float32)
+    ref_xys        = torch.from_numpy(ref_answer["pts"]).to(torch.float32)
+    ref_xys_sideID = torch.from_numpy(ref_answer["ptsSideID"]).to(torch.float32)
 
     optimizer = optim.Adam( list(camera.parameters()) , lr=0.1)
     #optimizer = optim.Adam( list(camera.parameters()) + [rectRatioSqrt], lr=0.1)
     #optimizer = optim.Adam( list(camera.parameters()) + [rectw], lr=0.01)
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=50, factor=0.5)
-
-    lossFunc = nn.L1Loss()
 
     f_fixed = True
 
@@ -131,14 +177,14 @@ if __name__=="__main__":
 
         
         corners_xyz = gen_rect(recth, rectw)
-        #corners_xyz = gen_rect(rectw, recth)
-
-        #corners_xyz = gen_rect2(rectRatioSqrt)
         corners_xy, mask = camera.getPixCoords(corners_xyz, tune_cam_params=True)
 
-        minDistnace, nearestEdgeIdx = get_min_dist(corners_xy, ref_xys)
-        #loss = torch.mean(minDistnace) # L1 loss
-        loss = torch.mean(minDistnace*minDistnace) # L1 loss
+
+
+        # minDistnace, nearestEdgeIdx = get_min_dist(corners_xy, ref_xys)
+        # #loss = torch.mean(minDistnace) # L1 loss
+        # loss = torch.mean(minDistnace*minDistnace) # L1 loss
+        loss = lossFunc(ref_xys, ref_xys_sideID, corners_xy)
         
 
         if (iter%100)==0:
@@ -157,23 +203,36 @@ if __name__=="__main__":
         if loss < 0.1: break
 
         if (iter%100)==0:
-            colors = [PALETTE[i] for i in nearestEdgeIdx]
-            canvas = np.zeros((1000,1000,3), dtype=np.uint8)
-            drawDots(   ref_xys, canvas, colors )
+            canvas = np.copy(ref_img)
             drawPolygon(corners_xy, canvas, PALETTE )
 
             cv2.imwrite(f"./testoutput/iter{iter:04d}.png", canvas)
         
-
-
     print("====Fit====")
-    print(f"rectRatio: {rectRatioSqrt*rectRatioSqrt}")        
+    #print(f"rectRatio: {rectRatioSqrt*rectRatioSqrt}")        
     #print(f"rectRatio: {rectRatioSqrt*rectRatioSqrt}")        
     print(f"cam f: {camera.initf * camera.f_corrfac}")
     print(f"cam pos: {camera.pos}")
 
     print("====Ref====")
     print(ref_answer['f'])
+
+    pixPerM = 500
+    resulth = int(recth * pixPerM)
+    resultw = int(rectw * pixPerM)
+
+    corners_xy_in_cam, _ = camera.getPixCoords(corners_xyz, tune_cam_params=False)
+    corners_xy_in_cam = corners_xy_in_cam.detach().numpy().astype(np.float32)
+
+    corners_xy_in_result = np.array([
+        [0,0], [resultw,0], [resultw,resulth], [0,resulth]
+    ], dtype=np.float32)
+
+    M = cv2.getPerspectiveTransform(corners_xy_in_cam, corners_xy_in_result)
+    dst = cv2.warpPerspective(ref_img,M,(resultw,resulth))
+    cv2.imwrite('./testoutput/proj.png',dst)
+    
+
 
 
 

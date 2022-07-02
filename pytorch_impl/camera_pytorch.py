@@ -145,13 +145,14 @@ class Camera(nn.Module):
         self.extrinsicM = extrinsicM
         self.perspectiveM = self.intrinsicM @ self.extrinsicM
 
-    def getPixCoords(self, worldCoords, tune_cam_params=False, getScales=False):
+    def getPixCoords(self, worldCoords, tune_cam_params=False, getScales=False, doUpdate=True):
         """
         worldCoords : numpy array (n,3)
         """
         if tune_cam_params:
-            self._update_intrinsicM()
-            self._update_extrinsicM()
+            if doUpdate:
+                self._update_intrinsicM()
+                self._update_extrinsicM()
             perspectiveM = self.perspectiveM
         else:
             perspectiveM = self.perspectiveM.detach()
@@ -171,8 +172,22 @@ class Camera(nn.Module):
             return xys, mask, scale
         else:
             return xys, mask
-        
     
+    def getWorldCoords(self, imgCoords):
+        """
+        inf possible points along a ray in world can give same XY in img, we give the pt that is on the z=0 plane at the world
+        """
+        with torch.no_grad():
+            if type(imgCoords) in [np.ndarray]: imgCoords = torch.tensor(imgCoords, dtype=torch.float32)
+            imgCoords = torch.cat( [imgCoords, torch.ones([len(imgCoords), 1])], axis=1 )
+            invM = torch.linalg.inv(self.perspectiveM.detach()[:,[0,1,3]])
+            world_xyws = invM @ imgCoords.T
+            world_xyws = world_xyws.T
+
+            world_xyzs = torch.zeros_like(world_xyws)
+            world_xyzs[:,0:2] = world_xyws[:,0:2] / world_xyws[:,2]
+        
+        return world_xyzs
 
 def drawPolygon(pts, canvas = None, color = (255,0,0), imgsize=(1000,1000)):
     if canvas is None:

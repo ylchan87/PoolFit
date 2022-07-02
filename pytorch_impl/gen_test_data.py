@@ -125,9 +125,9 @@ if __name__=="__main__":
     
     for idx in range(options.startIdx,options.startIdx+options.n):
 
-        camera.set_f( np.random.randint(400,800) )
+        camera.set_f( np.random.randint(600,1200) )
         
-        randPos    = randPtInBox([0,0,0.8], [2,2,0.7])
+        randPos    = randPtInBox([0,0,0.8], [4,4,0.7])
         randLookAt = randPtInBox([0,0,0], [1,1,0.3])
 
         #randPos = [0., -4., 4.]
@@ -151,7 +151,8 @@ if __name__=="__main__":
 
         ball_img_xys, mask, ball_scales = camera.getPixCoords(ball_world_xyzs, getScales=True)
         ball_img_xys = ball_img_xys.detach().cpu().numpy()
-        ball_scales = ball_scales.detach().cpu().numpy()
+        ball_img_d = ball_scales.detach().cpu().numpy() *balld
+        
 
         sideIDs = [
             SideID.TOP,
@@ -178,7 +179,7 @@ if __name__=="__main__":
         anchorsType = np.array(anchorsType)
 
         ball_img_xysi = ball_img_xys.astype(int)
-        drawBall(ball_img_xysi[0], int(ball_scales[0]*balld/2), canvas, (255,255,255))
+        drawBall(ball_img_xysi[0], int(ball_img_d[0]/2), canvas, (255,255,255))
 
         cv2.imwrite(f"./testimgs/test_{idx:03d}.jpg", canvas) 
 
@@ -191,8 +192,9 @@ if __name__=="__main__":
                     "pos"       : camera.pos,
                     "pts"       : anchorsPos,
                     "ptsSideID" : anchorsType,
-                    "ballxys"   : ball_world_xyzs,
-                    "ballscales": ball_scales,
+                    "ball_world_xys" : ball_world_xyzs,
+                    "ball_img_xys"   : ball_img_xys,
+                    "ball_img_d"     : ball_img_d,
 
                 },
                 outFile)

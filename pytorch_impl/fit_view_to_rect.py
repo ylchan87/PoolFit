@@ -123,11 +123,23 @@ def lossFunc(ref_xys, ref_sideIds, corners_xy):
     loss = torch.mean(loss * loss) # L2 loss
     return loss
 
+def ballLossFunc(ref_ball_img_xys, ref_ball_img_d, ball_img_xys, ball_img_d):
+    loss_d = ref_ball_img_d - ball_img_d
+    loss_d = torch.mean(loss_d*loss_d)
+
+    loss_xys = ref_ball_img_xys - ball_img_xys
+    loss_xys = torch.mean(loss_xys*loss_xys)
+
+    loss = loss_xys + loss_d * 5.
+
+    return loss
+
 if __name__=="__main__":
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument("--test_idx", default=0, type=int)
-    parser.add_argument("--max_iter", default=10000, type=int)
+    parser.add_argument("--test_idx", default=6, type=int)
+    parser.add_argument("--max_iter", default=1000, type=int)
+    parser.add_argument("--init_f", default=1000, type=float)
     options = parser.parse_args()
 
     # color for 4 side of the rect
@@ -152,8 +164,8 @@ if __name__=="__main__":
     corners_xyz = gen_rect2(rectRatioSqrt)
 
     camera = Camera(800., 1000, 1000)
-    camera.set_f(984.)
-    camera.set_pos([-5,1,5])
+    camera.set_f(options.init_f)
+    camera.set_pos([5,1,5])
     camera.set_lookat([0,0,0])    
 
     # camera.set_f(1363.)
@@ -173,13 +185,11 @@ if __name__=="__main__":
 
     f_fixed = True
 
+    iter = 0
     for iter in range(options.max_iter):
-
         
         corners_xyz = gen_rect(recth, rectw)
         corners_xy, mask = camera.getPixCoords(corners_xyz, tune_cam_params=True)
-
-
 
         # minDistnace, nearestEdgeIdx = get_min_dist(corners_xy, ref_xys)
         # #loss = torch.mean(minDistnace) # L1 loss
@@ -195,27 +205,91 @@ if __name__=="__main__":
         optimizer.zero_grad()
         scheduler.step(loss)
 
-        if loss<100 and f_fixed:
-            print("release f")
-            camera.set_f_fixed(False)
-            f_fixed = False
+        # if loss<100 and f_fixed:
+        #     print("release f")
+        #     camera.set_f_fixed(False)
+        #     f_fixed = False
 
-        if loss < 0.1: break
+        if loss < 100: break
 
         if (iter%100)==0:
             canvas = np.copy(ref_img)
             drawPolygon(corners_xy, canvas, PALETTE )
 
             cv2.imwrite(f"./testoutput/iter{iter:04d}.png", canvas)
+
+    
+    print("release f, add ball")
+    camera.set_f_fixed(False)
+    f_fixed = False
+
+    ref_ball_img_pos = torch.tensor(ref_answer["ball_img_xys"], dtype=torch.float32)
+    ref_ball_img_d   = torch.tensor(ref_answer["ball_img_d"  ], dtype=torch.float32)
+    rough_pos_guess = camera.getWorldCoords(ref_ball_img_pos)[0]
+    ball_world_pos_x = torch.tensor( rough_pos_guess[0], dtype=torch.float32, requires_grad=True)
+    ball_world_pos_y = torch.tensor( rough_pos_guess[1], dtype=torch.float32, requires_grad=True)
+    
+    ball_world_pos = torch.tensor( [0., 0., 0.] , dtype=torch.float32)
+    ball_world_pos[0] = ball_world_pos_x
+    ball_world_pos[1] = ball_world_pos_y
+
+
+    optimizer = optim.Adam( list(camera.parameters()) + [ball_world_pos_x, ball_world_pos_y] , lr=0.1)
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=50, factor=0.5)
+
+    for iter2 in range(iter, options.max_iter):
+        
+        corners_xyz = gen_rect(recth, rectw)
+        corners_xy, mask = camera.getPixCoords(corners_xyz, tune_cam_params=True)
+
+        edge_loss = lossFunc(ref_xys, ref_xys_sideID, corners_xy)
+
+
+        ball_world_pos = torch.tensor( [0., 0., 0.] , dtype=torch.float32)
+        ball_world_pos[0] = ball_world_pos_x
+        ball_world_pos[1] = ball_world_pos_y
+
+        ball_img_xys, mask, scales = camera.getPixCoords(ball_world_pos.unsqueeze(0), tune_cam_params=True, getScales=True)
+        ball_img_d = scales*balld
+        ball_loss = ballLossFunc(ref_ball_img_pos, ref_ball_img_d, ball_img_xys, ball_img_d)
+
+        # ball_img_xys, mask = camera.getPixCoords(ball_world_pos.unsqueeze(0), tune_cam_params=True, getScales=False, doUpdate=False)
+        # ball_loss = ballLossFunc(ref_ball_img_pos, ref_ball_img_d, ball_img_xys, ref_ball_img_d)
+
+        loss = edge_loss + ball_loss
+        #loss = edge_loss
+
+        if (iter2%100)==0:
+            print(f"iter2: {iter2} loss: {loss}")
+
+        loss.backward()
+        optimizer.step()
+        optimizer.zero_grad()
+        scheduler.step(loss)
+
+        if loss < 0.1: break
+
+        if (iter2%100)==0:
+            canvas = np.copy(ref_img)
+            drawPolygon(corners_xy, canvas, PALETTE )
+
+            ball_img_xysi = ball_img_xys.to(int)
+            drawBall(ball_img_xysi[0], int(ball_img_d[0]/2), canvas, (255,255,255))
+
+            cv2.imwrite(f"./testoutput/iter{iter2:04d}.png", canvas)
         
     print("====Fit====")
     #print(f"rectRatio: {rectRatioSqrt*rectRatioSqrt}")        
     #print(f"rectRatio: {rectRatioSqrt*rectRatioSqrt}")        
     print(f"cam f: {camera.initf * camera.f_corrfac}")
     print(f"cam pos: {camera.pos}")
+    print(f"ball pos: {ball_world_pos_x} {ball_world_pos_y}")
+    print(f"ball d: {ball_img_d[0]}")
 
     print("====Ref====")
-    print(ref_answer['f'])
+    print('f'             , ref_answer['f'             ])
+    print("ball_world_xys", ref_answer["ball_world_xys"])
+    print("ball_img_d"    , ref_answer["ball_img_d"    ])
 
     pixPerM = 500
     resulth = int(recth * pixPerM)

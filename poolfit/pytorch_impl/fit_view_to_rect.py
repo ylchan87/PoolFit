@@ -191,6 +191,8 @@ if __name__=="__main__":
         corners_xyz = gen_rect(recth, rectw)
         corners_xy, mask = camera.getPixCoords(corners_xyz, tune_cam_params=True)
 
+        print(corners_xy, mask)
+
         # minDistnace, nearestEdgeIdx = get_min_dist(corners_xy, ref_xys)
         # #loss = torch.mean(minDistnace) # L1 loss
         # loss = torch.mean(minDistnace*minDistnace) # L1 loss

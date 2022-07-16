@@ -2,6 +2,7 @@ import cv2
 import numpy as np
 import torch
 import pickle 
+from poolfit import PKG_ROOT
 
 def drawPolygon(pts, canvas = None, colors = [(255,0,0)], imgsize=(1000,1000)):
     if canvas is None:
@@ -61,7 +62,7 @@ def drawBall(pt, r, canvas = None, color = (255,0,0), imgsize=(1000,1000)):
 
     return canvas
 
-def read_test_case(idx, path="./testimgs/"):
+def read_test_case(idx, path=f"{PKG_ROOT}/testimgs/"):
     refImg = cv2.imread(f"{path}/test_{idx:03d}.jpg")
     with open(f"{path}/test_{idx:03d}.pkl", "rb") as f:
         pts = pickle.load(f)

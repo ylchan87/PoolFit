@@ -1,4 +1,3 @@
-from hmac import trans_36
 import cv2
 import numpy as np
 from poolfit.tensorflow_impl.rotation_conversion import matrix_to_axis_angle, axis_angle_to_matrix
@@ -51,7 +50,7 @@ class Camera(tf.keras.Model):
     
     @property
     def pos(self):
-        return tf.transpose(-self.extrinsicM[:3,:3]) @ self.pos_in_cam_frame
+        return tf.linalg.matvec( tf.transpose(-self.extrinsicM[:3,:3]) , self.pos_in_cam_frame)
         
     @pos.setter
     def pos(self, xyz):
@@ -113,19 +112,16 @@ class Camera(tf.keras.Model):
          PixXYW = IntrinsicM @ CamFrameXYZ
          need to norm the w component of PixXYW to get pix (x,y) coord
         """
-        # self.f will be casted as a value(?) in tensor construct -> NO grad
-        self.intrinsicM =  tf.Variable([
-                                [ -self.f,       0, self.imgW/2],
-                                [       0, -self.f, self.imgH/2],
-                                [       0,       0,           1],
-                            ], dtype=tf.float32)
-                            
-        # assign self.f to elements -> has grad
-        self.intrinsicM = tf.tensor_scatter_nd_update( 
-                                self.intrinsicM, 
-                                [[0,0],[1,1]],
-                                [-1./self.f_corrfac * self.initf, -1./self.f_corrfac * self.initf]
-                            )
+        A =  tf.constant([
+                            [      -1,       0, self.imgW/2],
+                            [       0,      -1, self.imgH/2],
+                            [       0,       0,           1],
+                        ], dtype=tf.float32)
+
+        fval = -1./self.f_corrfac * self.initf
+        B = tf.stack([fval,fval,1])
+
+        self.intrinsicM = A*B
 
         self.perspectiveM = self.intrinsicM @ self.extrinsicM
         
@@ -133,10 +129,9 @@ class Camera(tf.keras.Model):
         """
          CamFrameXYZ = extrinsicM @ WorldFrameXYZ1
         """
-        extrinsicM = tf.Variable(tf.eye(4, dtype=tf.float32)[0:3], trainable=False)
-        rotM = axis_angle_to_matrix( self.axis_angle)
-        
-        extrinsicM = tf.concat( [rotM, tf.expand_dims(self.pos_in_cam_frame,1)], axis=1) # 3x3 ,3x1 -> 3x4
+        rotMat = axis_angle_to_matrix( self.axis_angle)
+        xyzCol = tf.expand_dims(self.pos_in_cam_frame,1)
+        extrinsicM = tf.concat( [rotMat, xyzCol], axis=1) # 3x3 ,3x1 -> 3x4
 
         self.extrinsicM = extrinsicM
         self.perspectiveM = self.intrinsicM @ self.extrinsicM
@@ -151,7 +146,7 @@ class Camera(tf.keras.Model):
                 self._update_extrinsicM()
             perspectiveM = self.perspectiveM
         else:
-            perspectiveM = self.perspectiveM.detach()
+            perspectiveM = self.perspectiveM
 
         if type(worldCoords) in [np.ndarray]: worldCoords = tf.Variable(worldCoords, dtype=tf.float32)
 
@@ -176,7 +171,7 @@ class Camera(tf.keras.Model):
         #with tf.no_grad():
         if type(imgCoords) in [np.ndarray]: imgCoords = tf.Variable(imgCoords, dtype=tf.float32)
         imgCoords = tf.cat( [imgCoords, tf.ones([len(imgCoords), 1])], axis=1 )
-        invM = tf.linalg.inv(self.perspectiveM.detach()[:,[0,1,3]])
+        invM = tf.linalg.inv(self.perspectiveM[:,[0,1,3]])
         world_xyws = invM @ tf.transpose(imgCoords)
         world_xyws = tf.transpose(world_xyws)
 
@@ -189,7 +184,7 @@ def drawPolygon(pts, canvas = None, color = (255,0,0), imgsize=(1000,1000)):
     if canvas is None:
         canvas = np.zeros((imgsize[0],imgsize[1],3), dtype=np.uint8)
     if type(pts)==tf.Variable:
-        pts = pts.cpu().detach().numpy()
+        pts = pts.numpy()
 
     pts = pts.astype(int)
     for i in range(0,len(pts)-1):

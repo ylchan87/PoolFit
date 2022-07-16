@@ -241,7 +241,7 @@ if __name__=="__main__":
 
     opt = optim.Adam( list(camera.parameters()) + [rectw], lr=0.01)
     lossFunc = nn.L1Loss()
-    for iter in range(10000):
+    for iter in range(3):
         
 
         pts = gen_rect(recth, rectw)

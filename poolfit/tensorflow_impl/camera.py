@@ -118,7 +118,7 @@ class Camera(tf.keras.Model):
                             [       0,       0,           1],
                         ], dtype=tf.float32)
 
-        fval = -1./self.f_corrfac * self.initf
+        fval = 1./self.f_corrfac * self.initf
         B = tf.stack([fval,fval,1])
 
         self.intrinsicM = A*B

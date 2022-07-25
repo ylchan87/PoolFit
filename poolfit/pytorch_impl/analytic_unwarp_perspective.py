@@ -133,11 +133,11 @@ if __name__=="__main__":
     from utils import read_test_case
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--test_idx", default=10, type=int)
+    parser.add_argument("--test_idx", default=108, type=int)
     options = parser.parse_args()
 
     d, img = read_test_case(options.test_idx)
-    pts = d["pts"]
+    pts = d["pts"][::2] # 8 ends of the 4 lines -> 4 corners
 
     dst, M, solved_f = perspectiveTransformRect(img, pts)
 

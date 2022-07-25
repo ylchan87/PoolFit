@@ -93,7 +93,7 @@ if __name__=="__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--parallel", default=False, action="store_true", help="Gen samples where 2 out of 4 lines are parallel")
-    parser.add_argument("--startIdx", default=20, type=int)
+    parser.add_argument("--startIdx", default=0, type=int)
     parser.add_argument("--n", default=10, type=int)
     options = parser.parse_args()
 
@@ -127,8 +127,13 @@ if __name__=="__main__":
 
         camera.set_f( np.random.randint(600,1200) )
         
+        # close view
         randPos    = randPtInBox([0,0,0.8], [4,4,0.7])
         randLookAt = randPtInBox([0,0,0], [1,1,0.3])
+
+        # pull back view
+        # randPos    = randPtInBox([0,0,1.5], [4,4,0.7])
+        # randLookAt = randPtInBox([0,0,0], [1,1,0.3])
 
         #randPos = [0., -4., 4.]
         #randLookAt = [0.,0.,0.]
@@ -174,6 +179,11 @@ if __name__=="__main__":
             if len(pts)>0:
                 ptsi = np.round(pts).astype(int)
                 drawArrow( ptsi[0], ptsi[1], canvas, PALETTE[i] )
+            
+            if len(pts)==0:
+                for tmp in range(2):
+                    anchorsPos.append([-1.,-1.])
+                    anchorsType.append(sideIDs[i])
         
         anchorsPos  = np.array(anchorsPos )
         anchorsType = np.array(anchorsType)
@@ -181,9 +191,9 @@ if __name__=="__main__":
         ball_img_xysi = ball_img_xys.astype(int)
         drawBall(ball_img_xysi[0], int(ball_img_d[0]/2), canvas, (255,255,255))
 
-        cv2.imwrite(f"./testimgs/test_{idx:03d}.jpg", canvas) 
+        cv2.imwrite(f"../testimgs/test_{idx:03d}.jpg", canvas) 
 
-        with open(f"./testimgs/test_{idx:03d}.pkl", "wb") as outFile:
+        with open(f"../testimgs/test_{idx:03d}.pkl", "wb") as outFile:
             pickle.dump(
                 {
                     "f" : camera.f,

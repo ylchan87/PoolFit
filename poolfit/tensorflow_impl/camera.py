@@ -142,20 +142,38 @@ class Camera(tf.keras.Model):
         """
         if tune_cam_params:
             if doUpdate:
-                self._update_intrinsicM()
-                self._update_extrinsicM()
+                # self._update_intrinsicM()
+                A =  tf.constant([
+                            [      -1,       0, self.imgW/2],
+                            [       0,      -1, self.imgH/2],
+                            [       0,       0,           1],
+                        ], dtype=tf.float32)
+
+                fval = 1./self.f_corrfac * self.initf
+                B = tf.stack([fval,fval,1])
+
+                intrinsicM = A*B
+
+                # self._update_extrinsicM()
+                rotMat = axis_angle_to_matrix( self.axis_angle)
+                xyzCol = tf.expand_dims(self.pos_in_cam_frame,1)
+                extrinsicM = tf.concat( [rotMat, xyzCol], axis=1) # 3x3 ,3x1 -> 3x4
+
+                
+                self.perspectiveM = intrinsicM @ extrinsicM
+
             perspectiveM = self.perspectiveM
         else:
             perspectiveM = self.perspectiveM
 
         if type(worldCoords) in [np.ndarray]: worldCoords = tf.Variable(worldCoords, dtype=tf.float32)
 
-        xyzws = tf.concat( [worldCoords, tf.ones([worldCoords.shape[0], 1])], axis=1 )
-        xyws = perspectiveM @ tf.transpose(xyzws)
-        xyws = tf.transpose(xyws)
-        ws = xyws[:,2]
+        xyzws = tf.concat( [worldCoords, tf.ones([1,worldCoords.shape[1], 1])], axis=2 )
+        xyws = perspectiveM @ tf.transpose(xyzws, perm=[0,2,1])
+        xyws = tf.transpose(xyws, perm=[0,2,1])
+        ws = xyws[:,:,2]
         mask = ws>0            # if false, point is behind the cam
-        xys = xyws[:,0:2] / ws[:,None] # normalize w to 1
+        xys = xyws[:,:,0:2] / ws[:,:,None] # normalize w to 1
 
         if getScales:
             cam_frame_xyzs = self.extrinsicM @ tf.transpose(xyzws)
@@ -163,6 +181,10 @@ class Camera(tf.keras.Model):
             return xys, mask, scale
         else:
             return xys, mask
+    
+    def call(self, worldCoords):
+        xys, mask = self.getPixCoords(worldCoords, tune_cam_params=True, getScales=False, doUpdate=True)
+        return xys
     
     def getWorldCoords(self, imgCoords):
         """

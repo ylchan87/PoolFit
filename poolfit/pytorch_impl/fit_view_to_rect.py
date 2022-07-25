@@ -116,7 +116,8 @@ def lossFunc(ref_xys, ref_sideIds, corners_xy):
     
     for i in range(4):
         mask = ref_sideIds==sideIDs[i]
-        if not torch.any(mask): continue
+        if not torch.any(mask) : continue
+        if ref_xys[i*2,0]<0 : continue
         loss.append( get_distance_from_line(corners_xy[i], corners_xy[(i+1)%4],  ref_xys[mask]) )
     
     loss = torch.cat(loss)
@@ -137,8 +138,8 @@ def ballLossFunc(ref_ball_img_xys, ref_ball_img_d, ball_img_xys, ball_img_d):
 if __name__=="__main__":
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument("--test_idx", default=6, type=int)
-    parser.add_argument("--max_iter", default=1000, type=int)
+    parser.add_argument("--test_idx", default=8, type=int)
+    parser.add_argument("--max_iter", default=400, type=int)
     parser.add_argument("--init_f", default=1000, type=float)
     options = parser.parse_args()
 
@@ -186,6 +187,9 @@ if __name__=="__main__":
     f_fixed = True
 
     iter = 0
+    from datetime import datetime
+    t1 = datetime.now()
+
     for iter in range(options.max_iter):
         
         corners_xyz = gen_rect(recth, rectw)
@@ -210,15 +214,19 @@ if __name__=="__main__":
         #     camera.set_f_fixed(False)
         #     f_fixed = False
 
-        if loss < 100: break
+        # if loss < 100: break
 
-        if (iter%100)==0:
+        if (iter%20)==0:
             canvas = np.copy(ref_img)
             drawPolygon(corners_xy, canvas, PALETTE )
 
             cv2.imwrite(f"./testoutput/iter{iter:04d}.png", canvas)
+            # cv2.imwrite(f"./testoutput/step{iter//20:04d}.png", canvas)
 
-    
+
+    dt = datetime.now() - t1
+    print(f" time used: {dt.total_seconds()}")
+
     print("release f, add ball")
     camera.set_f_fixed(False)
     f_fixed = False

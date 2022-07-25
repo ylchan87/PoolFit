@@ -78,6 +78,6 @@ pip install tensorflow
 
 then install by
 ```
-cd PoolFit
+cd ~/path/to/repo/PoolFit
 pip install -e .
 ```

@@ -75,3 +75,9 @@ conda install pytorch torchvision torchaudio cudatoolkit=11.1 -c pytorch-lts -c 
 pip install opencv-contrib-python
 pip install tensorflow
 ```
+
+then install by
+```
+cd PoolFit
+pip install -e .
+```
